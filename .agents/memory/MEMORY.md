@@ -3,3 +3,4 @@
 - [Template seeding recovery](template-seeding-recovery.md) — keep starter-catalog seeding idempotent and retryable from admin entry points.
 - [Discord select options](discord-select-options.md) — disable the select component, not individual SelectOption entries, when no choices exist.
 - [Persistent buttons](persistent-buttons.md) — preserve existing panel IDs and avoid duplicate dynamic/ordinary dispatch.
+- [Railway persistence](railway-persistence.md) — verify live mounts before redeploying; repeated full template seeding can mask lost custom products.
