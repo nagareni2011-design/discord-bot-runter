@@ -8,3 +8,5 @@ Keep existing vending custom IDs compatible when changing button handlers; users
 **Why:** Discord.py dispatches dynamic and ordinary views separately, so overlapping registrations can cause duplicate purchase processing. A database-derived startup list can also omit an older panel. On 2026-09-28 the user confirmed the persistent-button repair worked on existing panels.
 
 **How to apply:** Test restart dispatch with a machine absent from the startup name list, and verify one callback per click. Missing inventory must return an explicit error, never be reconstructed from a public message.
+
+Refresh all known existing messages in place, not only the newest panel. **Why:** Users retain older messages; reposting on stock changes left public stock counts stale even while the purchase menu read current inventory. Resolve or explicitly relink authentic stored inventory rather than copying counts from a stale embed.
