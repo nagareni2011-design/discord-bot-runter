@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import os
 import shutil
 import threading
@@ -31,33 +32,32 @@ MAX_SOLD_COUNT = 2_147_483_647
 SCHEMA_VERSION = 8
 JST = ZoneInfo("Asia/Tokyo")
 _lock = threading.RLock()
+logger = logging.getLogger("vending-database")
 _UNSET = object()
 WARNING_CONTENT = "⚠️マネーロンダリングの可能せいがあります⚠️"
+TEMPLATE_CATALOG_VERSION = 2
 
-# These are starter vending machines from the supplied reference panels. They
-# are added only when the machine name does not already exist in saved data.
-# A finite product gets one warning line per unit of its initial inventory;
-# unlimited products keep one reusable warning line.
+# Reconstructed from the user's existing Discord panels. Finite stock values
+# are restored from the screenshots; unlimited items reuse one warning line.
 DEFAULT_TEMPLATE_CATALOG: tuple[
     tuple[str, tuple[tuple[str, int, int | None, bool], ...]], ...
 ] = (
     (
-        "💳paypayガチャ💳",
+        "👑管理者販売👑",
         (
-            ("paypay ガチャ 100円", 100, 698, False),
-            ("paypay500円ガチャ", 500, 140, False),
+            ("垢①Steamなし", 8000, 1, False),
+            ("垢②Steamなし", 9000, 1, False),
         ),
     ),
     (
-        "💎バウンティラッシュ石垢💎",
+        "✅管理者自販機販売✅",
+        (("垢①Steamなし", 8000, None, True),),
+    ),
+    (
+        "payガチャ",
         (
-            ("【Android】バウンティラッシュ石垢 (5200石付近 +3000欠片+超フェス2体)", 1200, 2, False),
-            ("【Android】バウンティラッシュ石垢 (4700~5000石付近+7000~8000欠片)", 2200, 4, False),
-            ("【IOS】5000石+2400欠片", 600, 1, False),
-            ("【IOS】5000石+6500欠片", 1500, 0, False),
-            ("【IOS】5000石+7200~8000欠片", 2200, 2, False),
-            ("【IOS】5000石+6500欠片＋白ニカ", 2800, 1, False),
-            ("【IOS】5000石+6500欠片＋白ニカ＆ウィナーロー", 3200, 3, False),
+            ("paypay100円ガチャ", 100, 433, False),
+            ("paypayガチャ500円", 500, 185, False),
         ),
     ),
     (
@@ -68,14 +68,24 @@ DEFAULT_TEMPLATE_CATALOG: tuple[
         ),
     ),
     (
-        "💎ぷにぷに垢💎",
+        "無料自販機",
+        (("ぷにぷにmod9月後半", 100, None, True),),
+    ),
+    (
+        "ぷにぷにmod",
+        (("ぷにぷにmod10月前半", 300, None, True),),
+    ),
+    (
+        "モンスト石垢",
         (
-            ("極上垢", 80, 2, False),
-            ("石垢 50~60万「ぷにぷに」", 1000, 5, False),
-            ("石垢 100~110万「ぷにぷに」", 1800, 8, False),
-            ("石垢 150~160万「ぷにぷに」", 2700, 2, False),
-            ("石垢 200~220万「ぷにぷに」", 3500, 2, False),
+            ("オーブ2800~3000、星6キャラ25~30", 1800, 5, False),
+            ("オーブ3300~3400、星6キャラ25~30", 2800, 4, False),
+            ("オーブ2500前後、ヤクモ確定", 2000, 3, False),
         ),
+    ),
+    (
+        "ドッカン石垢",
+        (("龍石12000", 1400, 4, False),),
     ),
     (
         "💎レジェンズ石垢💎",
@@ -88,29 +98,44 @@ DEFAULT_TEMPLATE_CATALOG: tuple[
     (
         "イーフト石垢",
         (
-            ("【Android】イーフト石垢 (5000~6000万+300万GP)", 900, 4, False),
-            ("【iOS】イーフト石垢 (7000~8000万+400~500万GP)", 1200, 1, False),
-            ("【iOS】イーフト石垢 (10000~14000万+1000万 GP前後)", 3800, 5, False),
-            ("【Android】イーフト石垢 (10000~12000万+1000万 GP前後)", 4000, 1, False),
+            ("【Android】イーフト石垢 (5000~6000万+300万GP)", 900, 3, False),
+            ("【iOS】イーフト石垢 (7000~8000万+400~500万GP)", 1200, 5, False),
+            ("【iOS】イーフト石垢 (10000~14000個+1000万GP前後)", 3800, 5, False),
+            ("【Android】イーフト石垢 (10000~12000個+1000万GP前後)", 4000, 5, False),
         ),
     ),
     (
+        "バウンティ石垢Android",
+        (
+            ("【Android】バウンティラッシュ石垢 (5200石付近+3000欠片+超フェス2体)", 1200, 7, False),
+            ("【Android】バウンティラッシュ石垢 (4700~5000石付近+7000~8000欠片)", 2200, 4, False),
+            ("【Android】バウンティ石垢 4700前後 7800欠片前後+ナス寿郎聖", 3050, 3, False),
+            ("【Android】バウンティ石垢4300前後 8000欠片前後+ゾロ&サンジ", 3050, 5, False),
+            ("【Android】バウンティ石垢4700前後8000欠片前後+ニカ&ボニー", 3050, 4, False),
+            ("【Android】バウンティラッシュ石垢4800前後8100欠片前後+超4", 3800, 8, False),
+        ),
+    ),
+    (
+        "バウンティ石垢iOS",
+        (
+            ("【IOS】5000石+2400欠片", 600, 0, False),
+            ("【IOS】5000石+6500欠片", 1500, 1, False),
+            ("【IOS】5000石+7200~8000欠片", 2200, 3, False),
+            ("【IOS】5000石+6500欠片+白ニカ", 2800, 3, False),
+            ("【IOS】5000石+6500欠片+白ニカ&ウィナーロー", 3200, 3, False),
+            ("【IOS】5000石+6500欠片+ナス寿郎&ウィナーロー", 4000, 1, False),
+        ),
+    ),
+)
+
+LEGACY_TEMPLATE_MACHINE_NAMES = frozenset(
+    {
+        "💳paypayガチャ💳",
+        "💎バウンティラッシュ石垢💎",
+        "💎ぷにぷに垢💎",
         "Gemini系",
-        (
-            ("Gemini Pro 18-month plan", 800, 10, False),
-            ("Gemini Pro forever", 1800, 12, False),
-        ),
-    ),
-    (
         "サブスクや便利系",
-        (
-            ("Gmail生成無限", 80, None, True),
-            ("YouTube Premium Lifetime Account [永久垢]", 800, 20, False),
-            ("Spotify Premium Lifetime [永久垢]", 400, None, True),
-            ("電話番号認証無料", 400, None, True),
-            ("にゃんこ最強を作れる", 300, None, True),
-        ),
-    ),
+    }
 )
 
 
@@ -132,6 +157,7 @@ def _default_data() -> dict[str, Any]:
             "daily_purchase_limit": 0,
             "vending_machines": {},
             "vending_panels": [],
+            "template_catalog_version": 0,
         },
     }
 
@@ -396,14 +422,43 @@ def _save(data: dict[str, Any]) -> None:
 
 
 def ensure_default_templates() -> int:
-    """Add the supplied starter machines once, without changing existing data."""
+    """Initialize templates and apply the screenshot restore exactly once."""
     data = load_data()
-    machines = data["config"]["vending_machines"]
+    config = data["config"]
+    machines = config["vending_machines"]
+    template_names = {machine_name for machine_name, _ in DEFAULT_TEMPLATE_CATALOG}
+
+    try:
+        catalog_version = int(config.get("template_catalog_version", 0))
+    except (TypeError, ValueError):
+        catalog_version = 0
+
+    if catalog_version < TEMPLATE_CATALOG_VERSION:
+        affected_names = template_names | set(LEGACY_TEMPLATE_MACHINE_NAMES)
+        affected_item_ids = {
+            str(item.get("id"))
+            for item in data["items"]
+            if item.get("machine_name") in affected_names
+        }
+        if any(
+            str(order.get("item_id")) in affected_item_ids
+            and order.get("status") in {"pending", "delivering"}
+            for order in data["orders"]
+        ):
+            # Keep in-flight purchases intact; a later admin entry point or
+            # restart can retry this one-time catalog migration.
+            logger.warning(
+                "Template catalog refresh deferred because affected products have active orders"
+            )
+            return 0
+
+    changed = False
     added = 0
     for machine_name, products in DEFAULT_TEMPLATE_CATALOG:
         if machine_name in machines:
             continue
         machines[machine_name] = {"channel_id": None, "message_id": None}
+        changed = True
         for name, price, stock, unlimited in products:
             contents = [WARNING_CONTENT] if unlimited else [WARNING_CONTENT] * int(stock or 0)
             data["items"].append(
@@ -421,9 +476,112 @@ def ensure_default_templates() -> int:
             )
             data["next_item_id"] += 1
             added += 1
-    if added:
+
+    refreshed = 0
+    if catalog_version < TEMPLATE_CATALOG_VERSION:
+        order_item_ids = {str(order.get("item_id")) for order in data["orders"]}
+        for machine_name, products in DEFAULT_TEMPLATE_CATALOG:
+            machines.setdefault(machine_name, {"channel_id": None, "message_id": None})
+            existing_items = [
+                item for item in data["items"] if item.get("machine_name") == machine_name
+            ]
+            items_by_name: dict[str, list[dict[str, Any]]] = {}
+            for item in existing_items:
+                items_by_name.setdefault(str(item.get("name", "")), []).append(item)
+
+            replacement_items: list[dict[str, Any]] = []
+            retained_ids: set[str] = set()
+            for name, price, stock, unlimited in products:
+                matches = items_by_name.get(name, [])
+                existing = matches.pop(0) if matches else None
+                if existing is None:
+                    item_id = data["next_item_id"]
+                    data["next_item_id"] += 1
+                    sold_count = 0
+                else:
+                    item_id = existing["id"]
+                    sold_count = int(existing.get("sold_count", 0) or 0)
+                    retained_ids.add(str(item_id))
+
+                contents = (
+                    [WARNING_CONTENT]
+                    if unlimited
+                    else [WARNING_CONTENT] * int(stock or 0)
+                )
+                replacement_items.append(
+                    {
+                        "id": item_id,
+                        "machine_name": machine_name,
+                        "name": name,
+                        "price": price,
+                        "contents": contents,
+                        "unlimited": unlimited,
+                        "purchase_limit": None,
+                        "sold_count": sold_count,
+                        "legacy_stock_unregistered": 0,
+                    }
+                )
+                refreshed += 1
+
+            # Keep removed item IDs only when historical orders still refer to
+            # them, but mark those products out of stock so they cannot be sold.
+            retired_items = []
+            for item in existing_items:
+                item_id = str(item.get("id"))
+                if item_id in retained_ids or item_id in order_item_ids:
+                    if item_id not in retained_ids:
+                        retired_item = copy.deepcopy(item)
+                        retired_item["contents"] = []
+                        retired_item["unlimited"] = False
+                        retired_item["legacy_stock_unregistered"] = 0
+                        retired_items.append(retired_item)
+                    continue
+
+            data["items"] = [
+                item
+                for item in data["items"]
+                if item.get("machine_name") != machine_name
+            ] + replacement_items + retired_items
+
+        # Remove obsolete starter-only machines only when they have no real
+        # delivery data, panel mappings, or order history.
+        panel_machines = {
+            str(panel.get("machine_name"))
+            for panel in config.get("vending_panels", [])
+            if isinstance(panel, dict) and panel.get("machine_name")
+        }
+        for machine_name in LEGACY_TEMPLATE_MACHINE_NAMES - template_names:
+            old_items = [
+                item for item in data["items"] if item.get("machine_name") == machine_name
+            ]
+            old_ids = {str(item.get("id")) for item in old_items}
+            machine_config = machines.get(machine_name, {})
+            has_saved_panel = (
+                isinstance(machine_config, dict)
+                and bool(machine_config.get("channel_id") or machine_config.get("message_id"))
+            ) or machine_name in panel_machines
+            has_order_history = any(
+                str(order.get("item_id")) in old_ids for order in data["orders"]
+            )
+            has_non_template_content = any(
+                any(line != WARNING_CONTENT for line in item.get("contents", []))
+                for item in old_items
+            )
+            if has_saved_panel or has_order_history or has_non_template_content:
+                continue
+            data["items"] = [
+                item
+                for item in data["items"]
+                if item.get("machine_name") != machine_name
+            ]
+            machines.pop(machine_name, None)
+
+        config["template_catalog_version"] = TEMPLATE_CATALOG_VERSION
+        changed = True
+
+    if changed:
         _save(data)
-    return added
+    return added + refreshed
 
 
 def get_config(key: str, default: Any = None) -> Any:

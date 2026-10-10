@@ -172,7 +172,7 @@ class MyBot(commands.Bot):
     async def setup_hook(self) -> None:
         added_templates = database.ensure_default_templates()
         if added_templates:
-            logger.info("Added %s starter template products", added_templates)
+            logger.info("Initialized or refreshed %s template products", added_templates)
         database.recover_delivery_orders()
         self.add_view(AdminPanelView())
         # Existing Discord messages may refer to machines absent from the current
