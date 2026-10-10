@@ -63,6 +63,15 @@ class ScreenshotTemplateTests(unittest.TestCase):
         refreshed = database.get_item(item["id"])
         self.assertEqual(len(refreshed["contents"]), 432)
 
+    def test_product_settings_selector_includes_all_restored_templates(self):
+        view = main.ProductSettingsView()
+        selector = view.children[0]
+
+        self.assertEqual(
+            {option.value for option in selector.options},
+            {machine_name for machine_name, _ in database.DEFAULT_TEMPLATE_CATALOG},
+        )
+
     def test_existing_panel_title_resolves_to_restored_machine_without_reposting(self):
         database.ensure_default_templates()
         with patch.object(main, "bot", SimpleNamespace(user=SimpleNamespace(id=42))):
