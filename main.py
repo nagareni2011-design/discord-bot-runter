@@ -969,6 +969,12 @@ def resolve_panel_machine(machine_name: str, interaction: discord.Interaction) -
     return None
 
 
+PANEL_RECOVERY_LABELS = {
+    "バウンティ石垢iOS": "💎バウンティラッシュ石垢💎",
+    "バウンティ石垢Android": "Android/バウンティ石垢",
+}
+
+
 class PanelRecoveryView(SafeView):
     """Explicit owner-only recovery for an unrecognised bot-owned panel."""
 
@@ -976,7 +982,17 @@ class PanelRecoveryView(SafeView):
         super().__init__(timeout=180)
         self.channel_id, self.message_id = channel_id, message_id
         names = list(dict.fromkeys(item["machine_name"] for item in database.get_items()))
-        options = [discord.SelectOption(label=truncate(name, 100), value=name) for name in names[:25]]
+        options = []
+        for name in names[:25]:
+            label = PANEL_RECOVERY_LABELS.get(name, name)
+            description = f"商品データ: {name}" if label != name else None
+            options.append(
+                discord.SelectOption(
+                    label=truncate(label, 100),
+                    value=name,
+                    description=truncate(description, 100) if description else None,
+                )
+            )
         select = ui.Select(
             placeholder="リンク先の既存自販機を選択",
             options=options or [discord.SelectOption(label="商品データがありません", value="none")],

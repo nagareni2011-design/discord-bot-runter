@@ -28,15 +28,16 @@ class ScreenshotTemplateTests(unittest.TestCase):
             "👑管理者販売👑": [1, 1],
             "✅管理者自販機販売✅": ["unlimited"],
             "payガチャ": [433, 185],
-            "💎プロスピ石垢💎": [2, 10],
+            "💎プロスピ石垢💎": [13, 9, 5],
             "無料自販機": ["unlimited"],
             "ぷにぷにmod": ["unlimited"],
-            "モンスト石垢": [5, 4, 3],
-            "ドッカン石垢": [4],
-            "💎レジェンズ石垢💎": [6, 6, 3],
-            "イーフト石垢": [3, 5, 5, 5],
-            "バウンティ石垢Android": [7, 4, 3, 5, 4, 8],
-            "バウンティ石垢iOS": [0, 1, 3, 3, 3, 1],
+            "💎ぷにぷに垢💎": [0, 4, 63, 46, 16],
+            "モンスト石垢": [6, 4, 3],
+            "ドッカン石垢": [19, 17, 23, 25],
+            "💎レジェンズ石垢💎": [22, 41, 42, 37, 37, 54],
+            "イーフト石垢": [31, 35, 41, 58, 48],
+            "バウンティ石垢Android": [4, 47, 50, 51, 50, 48],
+            "バウンティ石垢iOS": [0, 0, 49, 52, 51, 47, 28],
         }
         for machine_name, stocks in expected.items():
             with self.subTest(machine=machine_name):
@@ -71,6 +72,24 @@ class ScreenshotTemplateTests(unittest.TestCase):
             {option.value for option in selector.options},
             {machine_name for machine_name, _ in database.DEFAULT_TEMPLATE_CATALOG},
         )
+
+    def test_recovery_selector_links_photo_panel_titles_to_saved_machines(self):
+        database.ensure_default_templates()
+        view = main.PanelRecoveryView(123, 456)
+        options = {option.label: option.value for option in view.children[0].options}
+        expected = {
+            "💎バウンティラッシュ石垢💎": "バウンティ石垢iOS",
+            "Android/バウンティ石垢": "バウンティ石垢Android",
+            "💎ぷにぷに垢💎": "💎ぷにぷに垢💎",
+            "💎プロスピ石垢💎": "💎プロスピ石垢💎",
+            "イーフト石垢": "イーフト石垢",
+            "💎レジェンズ石垢💎": "💎レジェンズ石垢💎",
+            "ドッカン石垢": "ドッカン石垢",
+            "モンスト石垢": "モンスト石垢",
+        }
+        for panel_title, machine_name in expected.items():
+            with self.subTest(panel=panel_title):
+                self.assertEqual(options[panel_title], machine_name)
 
     def test_existing_panel_title_resolves_to_restored_machine_without_reposting(self):
         database.ensure_default_templates()
